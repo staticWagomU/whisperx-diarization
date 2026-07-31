@@ -1,0 +1,21 @@
+# direnv
+.direnv/
+
+# uv / Python venv
+.venv/
+__pycache__/
+
+# nix build 結果
+result
+result-*
+
+# 秘密情報（HuggingFace トークンなど）
+.env
+
+# 入出力データ
+output/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.mp4
