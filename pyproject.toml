@@ -1,13 +1,14 @@
 [project]
 name = "whisperx-diarization"
 version = "0.1.0"
-description = "High-accuracy speaker-diarized transcription with WhisperX (Japanese-focused)"
+description = "High-accuracy speaker-diarized transcription with whispermlx (Japanese-focused)"
 readme = "README.md"
-# torch / ctranslate2 / onnxruntime の macOS arm64 wheel が揃う範囲に固定。
+# torch / pyannote.audio などの macOS arm64 wheel が揃う範囲に固定。
 requires-python = ">=3.11,<3.13"
 dependencies = [
-  "whisperx>=3.3",
+  "whispermlx>=3.13,<4",
 ]
 
 [tool.uv]
-# CPU 実行前提（macOS には CUDA が無いため）。torch は通常の PyPI wheel でよい。
+# ASR は whispermlx / mlx-whisper が Apple Silicon GPU で実行する。
+# VAD / alignment / diarization の PyTorch 系処理は通常の PyPI wheel でよい。

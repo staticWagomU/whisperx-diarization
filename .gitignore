@@ -13,6 +13,7 @@ result-*
 .env
 
 # 入出力データ
+input/
 output/
 *.wav
 *.mp3
