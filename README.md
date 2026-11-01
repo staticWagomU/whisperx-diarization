@@ -204,3 +204,22 @@ torchaudio が引き込む `torchcodec` が自前の ffmpeg 共有ライブラ�
 | `transcribe.sh` / `assign_nemotron.py` | 日本語・Nemotron 話者分離つき文字起こし |
 | `compare_diarization.py` / `diarize_nemotron.py` | pyannote と Nemotron の話者分離の比較 |
 | `.envrc` | direnv 連携（flake 有効化 + `.env` 読み込み） |
+
+## インタラクティブに選ぶ
+
+```bash
+./tui.sh "path/to/audio.m4a"
+# 保存先を指定する場合（まだ存在しないディレクトリ）
+./tui.sh "path/to/audio.m4a" --output ./output/new-session
+```
+
+Python 3 の curses を使うターミナル画面です。`j` / `k` で項目を移動し、
+`Space` で選択肢を開き、`j` / `k` → `Space` で変更を確定します。
+`Enter` は実行確認へ進む・実行する操作、`Esc` は取消・戻る・終了です。
+実行中の `Esc` は停止確認を開き、`Enter` で子プロセスを含め停止します。
+
+文字起こしモデル、話者分離の有無とモデル（Nemotron / pyannote community-1）、
+単語時刻の整列、言語、VAD、整列用deviceを選べます。既存の環境変数指定を初期値に使います。
+pyannoteには `HF_TOKEN` とモデル利用条件への同意が必要です。
+出力は実行ごとの新規ディレクトリに保存し、`run.log` に処理ログを残します。
+モデル比較は従来の `compare_diarization.py` を使用してください。

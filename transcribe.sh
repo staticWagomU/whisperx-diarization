@@ -12,6 +12,7 @@ OUTDIR="${2:-$SCRIPT_DIR/output}"
 MODEL="${WHISPERX_MODEL:-large-v3}"
 COMPUTE="${WHISPERX_COMPUTE:-default}"
 DIARIZE="${WHISPERX_DIARIZE:-1}"
+DIARIZATION_MODEL="${WHISPERX_DIARIZATION_MODEL:-nemotron}"
 DEVICE="${WHISPERX_DEVICE:-cpu}"
 ALIGN="${WHISPERX_ALIGN:-1}"
 VAD_METHOD="${WHISPERX_VAD_METHOD:-pyannote}"
@@ -21,6 +22,11 @@ LANGUAGE="${WHISPERX_LANGUAGE:-ja}"
 
 if [ ! -f "$AUDIO" ]; then
 	echo "エラー: ファイルが見つかりません: $AUDIO" >&2
+	exit 1
+fi
+
+if [ "$DIARIZATION_MODEL" != "nemotron" ] && [ "$DIARIZATION_MODEL" != "pyannote" ]; then
+	echo "エラー: 未対応の話者分離モデル: $DIARIZATION_MODEL" >&2
 	exit 1
 fi
 
@@ -75,7 +81,11 @@ fi
 "${cmd[@]}"
 
 if [ "$DIARIZE" != "0" ]; then
-	uv run --script diarize_nemotron.py "$AUDIO" "$ASR_OUTDIR/diarization.rttm"
+	if [ "$DIARIZATION_MODEL" = "pyannote" ]; then
+		uv run python diarize_pyannote.py "$AUDIO" "$ASR_OUTDIR/diarization.rttm"
+	else
+		uv run --script diarize_nemotron.py "$AUDIO" "$ASR_OUTDIR/diarization.rttm"
+	fi
 	uv run python assign_nemotron.py "$ASR_OUTDIR/$(basename "${AUDIO%.*}").json" "$ASR_OUTDIR/diarization.rttm" "$AUDIO" "$OUTDIR"
 fi
 
