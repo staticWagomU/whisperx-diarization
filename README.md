@@ -84,6 +84,36 @@ Issue #1 の比較では発話区間の検出に改善が見られた一方、�
 | `WHISPERX_ALIGN` | `1` | `0` で単語レベル整列を無効化して高速化 |
 | `WHISPERX_DIARIZE` | `1` | `0` で Nemotron による話者分離を無効化 |
 
+### RE-USEを任意の前処理として使う（Mac）
+
+```bash
+WHISPERX_REUSE=1 ./transcribe.sh input/meeting.m4a
+```
+
+既定は無効です。有効時はNemotronLabs RE-USEで処理した音声を文字起こし・整列に使い、
+話者分離には原音を使います。同時発話では小さい声や相づちを抑える可能性があるため、
+録音に応じて有効にしてください。原音は変更しません。処理用WAVは終了時に削除します。
+出力名は元音声の名前を維持します。前処理に失敗した場合はそこで停止します。
+
+[SpeechLens CLI](https://github.com/faraday/SpeechLens/releases) と、対応する形式に変換した
+[NemotronLabs RE-USE公式重み](https://huggingface.co/nvidia/NVIDIA-NemotronLabs-RE-USE) が必要です。
+CLIは同梱の `mlx.metallib`・ffmpeg・ffprobeと同じディレクトリに置いてください。
+入力のデコードにはNix環境のffmpegを使い、16kHz mono WAVへ変換します。
+
+このマシンでは検証済みファイルを `~/.ai/whisperx-diarization/re-use/` に保存しており、
+そのまま上記コマンドで使用できます。他の場所に配置する場合は指定してください。
+
+```bash
+export WHISPERX_REUSE_CLI=/absolute/path/to/speechlens-cli
+export WHISPERX_REUSE_WEIGHTS=/absolute/path/to/model_mlx.safetensors
+```
+
+既定のCLIは `~/.ai/whisperx-diarization/re-use/cli/speechlens-cli/speechlens-cli`、
+重みは `~/.ai/whisperx-diarization/re-use/model_mlx.safetensors` です。
+`WHISPERX_REUSE_ROOT` で共通の保存先も変更できます。
+SpeechLens配布の旧RE-USE変換済み重みと、新しいNemotronLabs版ではライセンスが異なるため、
+使用する重みのモデルカードを確認してください。
+
 ### 話者分離を切って高速化する
 
 講演やセミナーのような独話で話者ラベルが不要なら、Nemotron を切れます。

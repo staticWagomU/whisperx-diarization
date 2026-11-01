@@ -36,17 +36,28 @@ mkdir -p "$OUTDIR"
 OUTDIR="$(cd "$OUTDIR" && pwd)"
 cd "$SCRIPT_DIR"
 
+ASR_AUDIO="$AUDIO"
+PREPROCESS_DIR=""
 ASR_OUTDIR="$OUTDIR"
+cleanup() {
+	if [ -n "$PREPROCESS_DIR" ]; then rm -rf "$PREPROCESS_DIR"; fi
+	if [ "$ASR_OUTDIR" != "$OUTDIR" ]; then rm -rf "$ASR_OUTDIR"; fi
+}
+trap cleanup EXIT
+if [ "${WHISPERX_REUSE:-0}" = "1" ]; then
+	PREPROCESS_DIR="$(mktemp -d "$OUTDIR/.reuse.XXXXXX")"
+	ASR_AUDIO="$PREPROCESS_DIR/$(basename "${AUDIO%.*}").wav"
+	bash "$SCRIPT_DIR/enhance_reuse.sh" "$AUDIO" "$ASR_AUDIO"
+fi
 if [ "$DIARIZE" != "0" ]; then
 	ASR_OUTDIR="$(mktemp -d "$OUTDIR/.nemotron.XXXXXX")"
-	trap 'rm -rf "$ASR_OUTDIR"' EXIT
 fi
 
 echo "▶ 文字起こし開始: $AUDIO  (engine=whispermlx, model=$MODEL, compute=$COMPUTE, device=$DEVICE, vad=$VAD_METHOD, lang=$LANGUAGE, align=$ALIGN, diarize=$DIARIZE)"
 
 # uv run で venv を有効化して whispermlx を実行（ASR は MLX で Apple Silicon GPU を使う）。
 cmd=(
-	uv run whispermlx "$AUDIO"
+	uv run whispermlx "$ASR_AUDIO"
 	--model "$MODEL"
 	--language "$LANGUAGE"
 	--device "$DEVICE"
