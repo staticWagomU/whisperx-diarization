@@ -59,6 +59,27 @@ direnv reload   # または nix develop に入り直す
 
 ## 使い方
 
+### Haas + Nemotron（speech.cpp / Metal）
+
+speech.cpp をインストールした環境で、次を実行します。
+
+```bash
+nix develop -c ./transcribe_haas.sh path/to/audio.m4a
+# RE-USE 前処理を使う場合
+WHISPERX_REUSE=1 nix develop -c ./transcribe_haas.sh path/to/audio.m4a
+```
+
+`haas-ja-v1.0` + `silero-vad` + `nemotron-3-diarization` を使い、
+`output/haas/<音声名>.json` に文字起こしと話者区間を保存します。
+モデルは初回に取得します。`SPEECH_BIN` で実行ファイルを指定できます
+（既定は `~/.local/bin/speech`）。第2引数で出力先を指定できます。
+JSON の `regions` に発話区間ごとの本文と話者の時間範囲が入ります。
+区間内に複数人が話す場合があり、単語ごとの話者確定を保証しません。
+この経路の出力は JSON のみで、既存の whispermlx 出力とは別形式です。
+RE-USE 有効時は前処理した音声を Haas と Nemotron の両方に渡します。
+重複発話の副話者が抑えられる可能性があるため、既定では無効です。
+RE-USE の導入・重みの指定方法は下記の前処理の節を参照してください。
+
 ```bash
 ./transcribe.sh path/to/audio.m4a
 # 出力は ./output/ に txt / srt / vtt / json / tsv で保存される
