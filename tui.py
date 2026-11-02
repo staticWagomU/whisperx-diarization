@@ -154,7 +154,10 @@ def ui(screen, audio, out):
                 if key == 'WHISPERX_DIARIZATION_MODEL' and values['WHISPERX_DIARIZE'] == '0':
                     continue
                 candidate = choices.index(values[key]) if values[key] in choices else 0
-                choosing = True
+                if len(choices) == 2:
+                    values[key] = choices[(candidate + 1) % 2]
+                else:
+                    choosing = True
             elif ch in (10, 13):
                 page = 'confirm'
             elif ch == 27:
