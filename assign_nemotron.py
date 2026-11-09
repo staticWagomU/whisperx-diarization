@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 from whispermlx.diarize import assign_word_speakers
-from whispermlx.utils import get_writer
+from whispermlx.utils import LANGUAGES_WITHOUT_SPACES, get_writer
 
 
 def assign(transcript: dict, lines: list[str]) -> dict:
@@ -20,11 +20,45 @@ def assign(transcript: dict, lines: list[str]) -> dict:
     return assign_word_speakers(pd.DataFrame(rows, columns=["start", "end", "speaker"]), transcript)
 
 
+def split_by_speaker(transcript: dict, min_words: int = 8) -> dict:
+    """Whisper の文区切りを捨て、単語の話者が変わる位置でセグメントを作り直す。
+
+    日本語は 1 文字が 1 単語になり、文字の時刻と話者境界のずれで話者が文字単位に
+    ちらつく。min_words 未満の連続は直前の話者に含める。
+    """
+    # ponytail: 短い相づち（「はい」等）も直前の話者に吸収される。必要なら min_words を下げる
+    sep = "" if transcript.get("language") in LANGUAGES_WITHOUT_SPACES else " "
+    runs: list[tuple[str | None, list[dict]]] = []
+    for word in (w for s in transcript["segments"] for w in s.get("words", [])):
+        # 数字などは整列で時刻も話者も付かないことがあるので、直前の話者に含める
+        speaker = word.get("speaker", runs[-1][0] if runs else None)
+        if runs and speaker == runs[-1][0]:
+            runs[-1][1].append(word)
+        else:
+            runs.append((speaker, [word]))
+    merged: list[tuple[str | None, list[dict]]] = []
+    for speaker, words in runs:
+        if merged and (len(words) < min_words or speaker == merged[-1][0]):
+            merged[-1][1].extend(words)
+        else:
+            merged.append((speaker, words))
+    segments = []
+    for speaker, words in merged:
+        timed = [w for w in words if "start" in w]
+        if timed:
+            segments.append({
+                "start": timed[0]["start"], "end": timed[-1]["end"],
+                "text": sep.join(w["word"] for w in words),
+                "speaker": speaker, "words": words,
+            })
+    return {**transcript, "segments": segments}
+
+
 def main(json_path: str, rttm_path: str, audio_path: str, outdir: str) -> None:
     transcript = json.loads(Path(json_path).read_text())
     lines = Path(rttm_path).read_text().splitlines()
     get_writer("all", outdir)(
-        assign(transcript, lines), audio_path,
+        split_by_speaker(assign(transcript, lines)), audio_path,
         {"highlight_words": False, "max_line_count": None, "max_line_width": None},
     )
 
