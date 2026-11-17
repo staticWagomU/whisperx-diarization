@@ -96,6 +96,21 @@ Nemotron は最大 8 人まで対応します。`WHISPERX_MIN_SPEAKERS` / `WHISP
 8 単語（日本語では 8 文字）未満の短い区間は直前の話者に含めます。このため短い相づちは独立した行になりません。
 Issue #1 の比較では発話区間の検出に改善が見られた一方、話者の割り当ては未検証です。
 
+### Web で使う
+
+文字起こし（複数の録音をつなぐ・RE-USE・Haas / whispermlx）、話者と人の結び付け、声の登録、RE-USE だけの処理をブラウザから行えます。
+
+```bash
+nix develop -c uv run python server.py          # http://127.0.0.1:8765/ を開く
+# 既存の文字起こし（匿名ラベルの .json）を取り込む
+nix develop -c uv run python server.py import "2026-11-16 定例会議" input/meeting.WAV output/haas/meeting.json
+```
+
+話者は名前ではなく人の id で人と結び付けます。人の表示名を直すと、結び付いたすべての文字起こしとダウンロードに反映されます。
+声で自動判定した結び付けを「違う」で外すと、その人を `rejected` として記録します。
+文字起こしは `WHISPERX_TRANSCRIPTS`（既定 `~/.ai/whisperx-diarization/transcripts`）に、アップロードはその隣の `uploads` に保存します。
+127.0.0.1 でだけ待ち受け、認証はありません。校正版（.md）の生成はまだ Web からはできません。
+
 ### 声を登録して話者名を付ける
 
 声を登録しておくと、出力の `SPEAKER_00` などを登録した名前に置き換えます（whispermlx・Haas の両経路）。
@@ -110,7 +125,7 @@ nix develop -c uv run python voices.py list
 話者ごとに 1.5 秒以上の発話の埋め込み（pyannote の WeSpeaker）を平均し、登録した声とのコサイン類似度が
 閾値以上の組を、類似度の高い順に 1 対 1 で割り当てます。閾値に届かない話者は匿名のまま残ります。
 同じ名前で登録を重ねると録音ごとに追加し、照合ではどの録音も同じ重みで平均します。
-マイクや部屋が違う会議から登録を重ねるほど照合が安定します。
+マイクや部屋が違う会議から登録を重ねるほど照合が安定します。録音を外す・声の登録を消すのは Web の「人と声」から行えます。
 保存先には `people.json`（人の id・表示名・登録に使った録音）と `<id>.npy`（録音 1 本につき 1 行）を置きます。以前の `<名前>.npy` は初回の読み込みで移行します。
 照合の結果は標準エラーに類似度つきで表示します。話者分離が 2 人を 1 人にまとめた場合、名前は付いても分離は直りません。
 声紋は個人情報なので、リポジトリの外（既定 `~/.ai/whisperx-diarization/voices/`）に保存します。
@@ -129,6 +144,7 @@ nix develop -c uv run python voices.py list
 | `WHISPERX_DIARIZE` | `1` | `0` で Nemotron による話者分離を無効化 |
 | `WHISPERX_VOICES` | `~/.ai/whisperx-diarization/voices` | 登録した声の保存先 |
 | `WHISPERX_VOICE_THRESHOLD` | `0.6` | 声の照合で名前を付ける類似度の下限 |
+| `WHISPERX_TRANSCRIPTS` | `~/.ai/whisperx-diarization/transcripts` | Web 版の文字起こしの保存先 |
 
 ### RE-USEを任意の前処理として使う（Mac）
 
@@ -229,6 +245,7 @@ torchaudio が引き込む `torchcodec` が自前の ffmpeg 共有ライブラ�
 | `transcribe.sh` / `assign_nemotron.py` | 日本語・Nemotron 話者分離つき文字起こし |
 | `compare_diarization.py` / `diarize_nemotron.py` | pyannote と Nemotron の話者分離の比較 |
 | `voices.py` | 人と声の登録・照合 |
+| `server.py` / `web/index.html` | Web 版のサーバーと画面 |
 | `.envrc` | direnv 連携（flake 有効化 + `.env` 読み込み） |
 
 ## インタラクティブに選ぶ
