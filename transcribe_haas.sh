@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Haas + Nemotron through speech.cpp. Run inside nix develop for ffmpeg.
+# Haas + Nemotron through speech.cpp. Run inside nix develop for ffmpeg and uv.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 AUDIO="${1:?使い方: ./transcribe_haas.sh 音声ファイル [出力ディレクトリ]}"
@@ -18,5 +18,6 @@ else
     ffmpeg -nostdin -v error -i "$AUDIO" -ar 16000 -ac 1 -c:a pcm_s16le "$WORK/audio.wav"
 fi
 "$SPEECH" asr haas-ja-v1.0 --vad silero-vad --diarize nemotron-3-diarization --timestamps --format json "$WORK/audio.wav" > "$WORK/result.json"
-mv "$WORK/result.json" "$OUTDIR/$STEM.json"
-echo "完了: $OUTDIR/$STEM.json"
+uv run --project "$SCRIPT_DIR" python "$SCRIPT_DIR/assign_nemotron.py" --speech "$WORK/result.json" "$AUDIO" "$OUTDIR"
+mv "$WORK/result.json" "$OUTDIR/$STEM.speech.json"
+echo "完了: $OUTDIR に出力しました（txt / srt / vtt / json / tsv、speech.cpp の原本は $STEM.speech.json）"

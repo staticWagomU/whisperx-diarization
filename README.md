@@ -70,12 +70,13 @@ WHISPERX_REUSE=1 nix develop -c ./transcribe_haas.sh path/to/audio.m4a
 ```
 
 `haas-ja-v1.0` + `silero-vad` + `nemotron-3-diarization` を使い、
-`output/haas/<音声名>.json` に文字起こしと話者区間を保存します。
+`output/haas/` に whispermlx 経路と同じ txt / srt / vtt / json / tsv を保存します。
 モデルは初回に取得します。`SPEECH_BIN` で実行ファイルを指定できます
 （既定は `~/.local/bin/speech`）。第2引数で出力先を指定できます。
-JSON の `regions` に発話区間ごとの本文と話者の時間範囲が入ります。
-区間内に複数人が話す場合があり、単語ごとの話者確定を保証しません。
-この経路の出力は JSON のみで、既存の whispermlx 出力とは別形式です。
+Haas の文字ごとの時刻に Nemotron の話者区間を重ね、話者が変わる位置で行を区切ります
+（区切り方は後述の whispermlx 経路と同じです）。
+speech.cpp の出力そのものは `<音声名>.speech.json` に残します。
+その `regions` には発話区間ごとの本文と話者の時間範囲が入り、区間内に複数人が話す場合があります。
 RE-USE 有効時は前処理した音声を Haas と Nemotron の両方に渡します。
 重複発話の副話者が抑えられる可能性があるため、既定では無効です。
 RE-USE の導入・重みの指定方法は下記の前処理の節を参照してください。
@@ -95,6 +96,26 @@ Nemotron は最大 8 人まで対応します。`WHISPERX_MIN_SPEAKERS` / `WHISP
 8 単語（日本語では 8 文字）未満の短い区間は直前の話者に含めます。このため短い相づちは独立した行になりません。
 Issue #1 の比較では発話区間の検出に改善が見られた一方、話者の割り当ては未検証です。
 
+### 声を登録して話者名を付ける
+
+声を登録しておくと、出力の `SPEAKER_00` などを登録した名前に置き換えます（whispermlx・Haas の両経路）。
+過去の文字起こしの話者を指定して登録するか、本人だけが話す音声をまるごと渡します。
+
+```bash
+nix develop -c uv run python voices.py enroll 林 input/meeting.WAV output/haas/meeting.json SPEAKER_00
+nix develop -c uv run python voices.py enroll 林 input/my-voice.m4a
+nix develop -c uv run python voices.py list
+```
+
+話者ごとに 1.5 秒以上の発話の埋め込み（pyannote の WeSpeaker）を平均し、登録した声とのコサイン類似度が
+閾値以上の組を、類似度の高い順に 1 対 1 で割り当てます。閾値に届かない話者は匿名のまま残ります。
+同じ名前で登録を重ねると録音ごとに追加し、照合ではどの録音も同じ重みで平均します。
+マイクや部屋が違う会議から登録を重ねるほど照合が安定します。
+保存先には `people.json`（人の id・表示名・登録に使った録音）と `<id>.npy`（録音 1 本につき 1 行）を置きます。以前の `<名前>.npy` は初回の読み込みで移行します。
+照合の結果は標準エラーに類似度つきで表示します。話者分離が 2 人を 1 人にまとめた場合、名前は付いても分離は直りません。
+声紋は個人情報なので、リポジトリの外（既定 `~/.ai/whisperx-diarization/voices/`）に保存します。
+先方の声を登録する場合は同意を得てください。
+
 ### 環境変数で挙動を調整
 
 | 変数 | 既定 | 説明 |
@@ -106,6 +127,8 @@ Issue #1 の比較では発話区間の検出に改善が見られた一方、�
 | `WHISPERX_VAD_METHOD` | `pyannote` | VAD。`silero` も指定可能 |
 | `WHISPERX_ALIGN` | `1` | `0` で単語レベル整列を無効化して高速化 |
 | `WHISPERX_DIARIZE` | `1` | `0` で Nemotron による話者分離を無効化 |
+| `WHISPERX_VOICES` | `~/.ai/whisperx-diarization/voices` | 登録した声の保存先 |
+| `WHISPERX_VOICE_THRESHOLD` | `0.6` | 声の照合で名前を付ける類似度の下限 |
 
 ### RE-USEを任意の前処理として使う（Mac）
 
@@ -205,6 +228,7 @@ torchaudio が引き込む `torchcodec` が自前の ffmpeg 共有ライブラ�
 | `pyproject.toml` / `uv.lock` | whispermlx などライブラリのバージョン固定 |
 | `transcribe.sh` / `assign_nemotron.py` | 日本語・Nemotron 話者分離つき文字起こし |
 | `compare_diarization.py` / `diarize_nemotron.py` | pyannote と Nemotron の話者分離の比較 |
+| `voices.py` | 人と声の登録・照合 |
 | `.envrc` | direnv 連携（flake 有効化 + `.env` 読み込み） |
 
 ## インタラクティブに選ぶ
