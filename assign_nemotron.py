@@ -8,6 +8,8 @@ import pandas as pd
 from whispermlx.diarize import assign_word_speakers
 from whispermlx.utils import LANGUAGES_WITHOUT_SPACES, get_writer
 
+import voices
+
 
 def assign(transcript: dict, lines: list[str]) -> dict:
     rows = []
@@ -54,14 +56,34 @@ def split_by_speaker(transcript: dict, min_words: int = 8) -> dict:
     return {**transcript, "segments": segments}
 
 
-def main(json_path: str, rttm_path: str, audio_path: str, outdir: str) -> None:
-    transcript = json.loads(Path(json_path).read_text())
-    lines = Path(rttm_path).read_text().splitlines()
+def write_all(transcript: dict, lines: list[str], audio_path: str, outdir: str) -> None:
     get_writer("all", outdir)(
-        split_by_speaker(assign(transcript, lines)), audio_path,
+        voices.identify(split_by_speaker(assign(transcript, lines)), audio_path), audio_path,
         {"highlight_words": False, "max_line_count": None, "max_line_width": None},
     )
 
 
+def main(json_path: str, rttm_path: str, audio_path: str, outdir: str) -> None:
+    transcript = json.loads(Path(json_path).read_text())
+    write_all(transcript, Path(rttm_path).read_text().splitlines(), audio_path, outdir)
+
+
+def main_speech(json_path: str, audio_path: str, outdir: str) -> None:
+    """speech.cpp（Haas + Nemotron）の JSON の文字時刻と話者区間から各形式を書き出す。"""
+    result = json.loads(Path(json_path).read_text())
+    words = [{"word": t["text"], "start": t["start"], "end": t["end"]} for t in result["tokens"] if t["text"].strip()]
+    # split_by_speaker が文区切りを捨てるので、全文字を 1 セグメントにまとめて渡す
+    segments = [{"start": words[0]["start"], "end": words[-1]["end"],
+                 "text": "".join(w["word"] for w in words), "words": words}] if words else []
+    lines = [
+        f"SPEAKER audio 1 {s['start']:.3f} {s['end'] - s['start']:.3f} <NA> <NA> speaker_{s['speaker']} <NA> <NA>"
+        for region in result["regions"] for s in region["speakers"]
+    ]
+    write_all({"language": "ja", "segments": segments}, lines, audio_path, outdir)
+
+
 if __name__ == "__main__":
-    main(*sys.argv[1:5])
+    if sys.argv[1] == "--speech":
+        main_speech(*sys.argv[2:5])
+    else:
+        main(*sys.argv[1:5])

@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文字起こし</title>
+<style>
+:root {
+  --paper: #f4f6f5; --surface: #ffffff; --sunk: #e8edea; --ink: #18211f; --muted: #5a6763; --rule: #d3dbd7;
+  --accent: #24467f; --accent-soft: #e2e9f5; --on-accent: #ffffff;
+  --s0: #2f5fb3; --s1: #b0612a; --s2: #2f7f58; --s3: #8a5aa8;
+  --ok: #2b7448; --ok-bg: #e2f1e7; --warn: #8d5a00; --warn-bg: #f7ecd6; --err: #b42318; --err-bg: #fbe4e1;
+  --serif: "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --r: 8px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #121816; --surface: #19211f; --sunk: #222c29; --ink: #e2e9e6; --muted: #9aa7a3; --rule: #2e3a36;
+    --accent: #93b2ec; --accent-soft: #233251; --on-accent: #0f1726;
+    --s0: #7ea3ea; --s1: #e0995f; --s2: #6cc095; --s3: #c39ae0;
+    --ok: #79c995; --ok-bg: #1c3326; --warn: #e3b25a; --warn-bg: #362a12; --err: #f08a7e; --err-bg: #3c1d1a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.7 var(--sans); overflow-x: hidden; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1[tabindex="-1"]:focus { outline: none; }
+time, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-family: var(--serif); font-weight: 600; font-size: 24px; line-height: 1.4; text-wrap: balance; }
+h2 { font-size: 15px; }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.muted { color: var(--muted); font-size: 13px; }
+
+/* top bar */
+.bar { background: var(--surface); border-bottom: 1px solid var(--rule); }
+.bar .in { max-width: 860px; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; gap: 20px; overflow-x: auto; }
+.bar b { font-family: var(--serif); font-size: 17px; font-weight: 600; white-space: nowrap; padding: 12px 0; }
+.bar nav { display: flex; gap: 2px; }
+.bar nav a { color: var(--muted); text-decoration: none; padding: 14px 12px 12px; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 14px; }
+.bar nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+
+.page { max-width: 860px; margin: 0 auto; padding: 28px 20px 64px; display: flex; flex-direction: column; gap: 20px; }
+.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.back { color: var(--accent); text-decoration: none; font-size: 14px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.btn { border: 0; border-radius: var(--r); padding: 10px 18px; cursor: pointer; font-weight: 600; background: var(--accent); color: var(--on-accent); text-decoration: none; display: inline-block; }
+.btn.sec { background: var(--sunk); color: var(--ink); font-weight: 500; }
+.btn.small { padding: 5px 12px; font-size: 13px; }
+.btn.danger { background: var(--err); color: #fff; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > label, .lbl { font-size: 12px; color: var(--muted); }
+input[type="text"], input[type="search"], select { border: 1px solid var(--rule); background: var(--surface); border-radius: var(--r); padding: 8px 10px; min-width: 0; }
+.err-text { color: var(--err); font-size: 12px; }
+.warn-text { color: var(--warn); }
+.notice { border-radius: var(--r); padding: 10px 14px; font-size: 13px; }
+.notice.warn { background: var(--warn-bg); }
+.notice.err { background: var(--err-bg); }
+.notice.ok { background: var(--ok-bg); }
+.tag { font-size: 12px; border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.tag.ok { background: var(--ok-bg); color: var(--ok); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+.tag.n { background: var(--sunk); color: var(--muted); }
+
+/* lists */
+.list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); }
+.list > li + li { border-top: 1px solid var(--rule); }
+.list a, .list .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 14px 16px; color: inherit; text-decoration: none; align-items: center; }
+.list a:hover { background: var(--sunk); }
+.list .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list .s { grid-column: 1; font-size: 13px; color: var(--muted); }
+.list .r { grid-row: 1 / 3; grid-column: 2; text-align: right; font-size: 13px; color: var(--muted); }
+.empty { text-align: center; padding: 32px 16px; color: var(--muted); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.empty b { color: var(--ink); }
+
+/* files / drop */
+.drop { border: 1.5px dashed var(--rule); border-radius: var(--r); padding: 30px 20px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; color: var(--muted); }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop b { color: var(--ink); }
+.files { list-style: none; margin: 0; padding: 0; border: 1px solid var(--rule); border-radius: var(--r); }
+.files li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 8px 12px; }
+.files li + li { border-top: 1px solid var(--rule); }
+.files .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.x { background: none; border: 0; cursor: pointer; color: var(--muted); width: 28px; height: 28px; border-radius: 6px; }
+.x:hover { background: var(--sunk); }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details[open] summary { margin-bottom: 10px; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+.check input { margin-top: 6px; }
+.check small { display: block; color: var(--muted); font-size: 12px; }
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border: 0; padding: 0; margin: 0; }
+.choice { border: 1px solid var(--rule); border-radius: var(--r); padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { margin-top: 6px; }
+.choice small { display: block; color: var(--muted); font-size: 12px; }
+
+/* transcript detail */
+.summary { display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.summary b { color: var(--ink); font-weight: 600; }
+.person { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; }
+.person + .person { border-top: 1px solid var(--rule); }
+.sw { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.person .who { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.person select { width: 168px; }
+.person .x2 { border: 0; background: none; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 0; font-size: 12px; }
+.note { font-size: 12px; color: var(--muted); }
+.lines { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; }
+.lines li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-top: 1px solid var(--rule); font-size: 14px; }
+.lines time { font-size: 12px; color: var(--muted); padding-top: 2px; }
+.lines b { color: var(--c); margin-right: 6px; }
+.dl { display: flex; flex-wrap: wrap; gap: 8px; }
+.dl .btn.sec { font-family: var(--mono); font-size: 13px; padding: 7px 12px; }
+
+/* 話者リボン */
+.ribbon { display: flex; flex-direction: column; gap: 6px; position: relative; }
+.lane, .axis { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: center; }
+.lane .who { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; min-width: 0; }
+.lane .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane .who i { width: 10px; height: 10px; border-radius: 2px; background: var(--c); flex: none; }
+.track { position: relative; height: 22px; background: var(--sunk); border-radius: 4px; cursor: pointer; }
+.track button { position: absolute; top: 3px; bottom: 3px; min-width: 3px; border: 0; padding: 0; border-radius: 2px; background: var(--c); cursor: pointer; }
+.track button:hover, .track button:focus-visible { top: 0; bottom: 0; }
+.axis div { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); }
+.playhead { position: absolute; top: -4px; bottom: 18px; width: 2px; background: var(--ink); pointer-events: none; left: 0; }
+.playhead::before { content: ""; position: absolute; top: -3px; left: -4px; border: 5px solid transparent; border-top-color: var(--ink); }
+.ribbon-wrap { position: relative; }
+.ribbon-wrap .phwrap { position: absolute; inset: 0 0 0 124px; pointer-events: none; }
+
+/* 再生 */
+.player { position: sticky; bottom: 12px; z-index: 2; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); padding: 10px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; box-shadow: 0 6px 20px rgb(0 0 0 / .12); }
+.player .play { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; font-size: 15px; display: grid; place-items: center; }
+.player .skip { background: var(--sunk); border: 0; border-radius: var(--r); padding: 5px 10px; cursor: pointer; font-size: 13px; }
+.player .play:disabled, .player .skip:disabled { opacity: .4; cursor: not-allowed; }
+.player .now { font-size: 13px; color: var(--muted); min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player .now b { color: var(--c, var(--ink)); }
+.tbtn { background: none; border: 0; padding: 0; cursor: pointer; font: 12px var(--mono); color: var(--accent); text-align: left; align-self: start; padding-top: 2px; text-decoration: underline; text-decoration-color: transparent; }
+.tbtn:hover { text-decoration-color: currentColor; }
+.lines li.playing { background: var(--accent-soft); }
+.lines li { padding-left: 6px; padding-right: 6px; border-radius: 4px; }
+@media (max-width: 600px) { .lane, .axis { grid-template-columns: 76px minmax(0, 1fr); } .ribbon-wrap .phwrap { left: 88px; } .lane .who { font-size: 12px; } }
+
+dialog { border: 1px solid var(--rule); border-radius: var(--r); background: var(--surface); color: var(--ink); padding: 22px; width: min(480px, 92vw); }
+dialog::backdrop { background: rgb(0 0 0 / .4); }
+dialog form { display: flex; flex-direction: column; gap: 14px; }
+
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: var(--r); font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; }
+.toast.show { opacity: 1; }
+@media (max-width: 600px) {
+  .choices { grid-template-columns: 1fr; }
+  .person { grid-template-columns: 10px minmax(0, 1fr); }
+  .person > :last-child { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="in">
+    <b>文字起こし</b>
+    <nav aria-label="メイン">
+      <a href="#/" data-nav="list">文字起こし</a>
+      <a href="#/voices" data-nav="voices">人と声</a>
+      <a href="#/reuse" data-nav="reuse">雑音を抑える</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <!-- 文字起こし一覧（ホーム） -->
+  <section class="page" data-page="list" aria-labelledby="listTitle" hidden>
+    <div class="head">
+      <h1 id="listTitle">文字起こし</h1>
+      <a class="btn" href="#/new">新しく文字起こし</a>
+    </div>
+    <input type="search" id="q" placeholder="名前や話者で探す" aria-label="文字起こしを探す">
+    <ul class="list" id="tList"></ul>
+    <div class="empty" id="tEmpty" hidden><b>見つかりませんでした</b><span>名前か話者の名前で探せます。</span></div>
+  </section>
+
+  <!-- 新しく文字起こし -->
+  <section class="page" data-page="new" aria-labelledby="newTitle" hidden>
+    <a class="back" href="#/">← 文字起こし</a>
+    <h1 id="newTitle">新しく文字起こし</h1>
+    <div class="card" id="newForm">
+      <div class="drop" data-drop="new">
+        <b>録音をここにドロップ</b>
+        <span>分かれた録音は、名前の順につないで 1 本にします</span>
+        <div class="row">
+          <label class="btn sec small" for="newInput">ファイルを選ぶ</label>
+          <input type="file" id="newInput" class="sr" multiple accept="audio/*,.wav,.WAV,.m4a,.mp3">
+        </div>
+      </div>
+      <ul class="files" id="newFiles" hidden></ul>
+      <div class="field">
+        <label for="newName">名前</label>
+        <input type="text" id="newName" placeholder="例: 2026-11-16 定例会議" aria-describedby="newNameErr">
+        <span class="err-text" id="newNameErr" hidden>名前を入れてください。あとで一覧から探すときに使います。</span>
+      </div>
+      <details>
+        <summary>詳細設定</summary>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label class="check"><input type="checkbox" id="optReuse"><span>先に雑音を抑える<small>小さな声や相づちが消えることがある</small></span></label>
+          <label class="check"><input type="checkbox" id="optWhisper"><span>whispermlx で文字起こしする<small>単語ごとの時刻が正確になるが、数分かかる</small></span></label>
+        </div>
+      </details>
+      <div class="row">
+        <button class="btn" type="button" id="newRun" disabled>文字起こしする</button>
+        <span class="muted" id="newHint">録音を追加してください</span>
+      </div>
+    </div>
+    <div class="card" id="newBusy" hidden aria-live="polite">
+      <h2>文字起こしを始めています</h2>
+      <p class="muted">終わると結果の画面に移ります。このページを閉じても処理は続きます。</p>
+    </div>
+  </section>
+
+  <!-- 文字起こしの結果 -->
+  <section class="page" data-page="detail" aria-labelledby="dTitle" hidden>
+    <a class="back" href="#/">← 文字起こし</a>
+    <div class="head">
+      <div><h1 id="dTitle"></h1><div class="summary" id="dSummary"></div></div>
+    </div>
+    <div class="card" id="dBusy" hidden aria-live="polite">
+      <h2 id="dBusyT"></h2>
+      <p class="muted" id="dStep"></p>
+      <p class="notice err" id="dErr" hidden></p>
+      <p class="muted" id="dWait">終わるとこの画面に結果が出ます。このページを閉じても処理は続きます。</p>
+    </div>
+    <div id="dBody" style="display:flex;flex-direction:column;gap:20px">
+      <div class="card">
+        <div class="head"><h2>誰がいつ話したか</h2><span class="muted">帯を押すと、そこから再生します</span></div>
+        <div class="ribbon-wrap">
+          <div class="ribbon" id="ribbon"></div>
+          <div class="phwrap" aria-hidden="true"><div class="playhead" id="playhead"></div></div>
+        </div>
+        <div class="axis" aria-hidden="true"><span></span><div id="axis"></div></div>
+      </div>
+      <div class="card">
+        <div class="head"><h2>話している人</h2><span class="muted">人を選ぶと、本文とダウンロードに反映されます</span></div>
+        <div id="people"></div>
+      </div>
+      <div class="card">
+        <h2>ダウンロード</h2>
+        <div class="dl" id="dl">
+          <a class="btn sec" data-fmt="txt" download>.txt</a>
+          <a class="btn sec" data-fmt="srt" download>.srt</a>
+          <a class="btn sec" data-fmt="vtt" download>.vtt</a>
+          <a class="btn sec" data-fmt="tsv" download>.tsv</a>
+          <a class="btn sec" data-fmt="json" download>.json</a>
+        </div>
+      </div>
+      <div class="card">
+        <div class="head"><h2>本文</h2><span class="muted">時刻を押すと、その発言から再生します</span></div>
+        <ol class="lines" id="lines"></ol>
+      </div>
+      <div class="player" role="group" aria-label="再生">
+        <button class="skip" type="button" id="back5" aria-label="5 秒戻る">−5秒</button>
+        <button class="play" type="button" id="playBtn" aria-label="再生">▶</button>
+        <button class="skip" type="button" id="fwd5" aria-label="5 秒進む">+5秒</button>
+        <time id="clock">0:00 / 0:00</time>
+        <span class="now" id="nowSpk" aria-live="off"></span>
+        <audio id="audio" preload="metadata"></audio>
+      </div>
+    </div>
+  </section>
+
+  <!-- 声の登録 -->
+  <section class="page" data-page="voices" aria-labelledby="vTitle" hidden>
+    <div class="head">
+      <div><h1 id="vTitle">人と声</h1><p class="muted">文字起こしの話者は、ここにいる人と結び付けます。声を登録した人は、次から自動で結び付きます。</p></div>
+      <a class="btn" href="#/voices/new">声を登録する</a>
+    </div>
+    <ul class="list" id="vList"></ul>
+    <div class="card empty" id="vEmpty" hidden><b>まだ誰も登録していません</b><span>まず自分の声から登録しておくと、毎回の名前付けが楽になります。</span><a class="btn" href="#/voices/new">声を登録する</a></div>
+  </section>
+
+  <!-- 声を登録する -->
+  <section class="page" data-page="voiceNew" aria-labelledby="vnTitle" hidden>
+    <a class="back" href="#/voices">← 人と声</a>
+    <h1 id="vnTitle">声を登録する</h1>
+    <div class="card">
+      <div class="field">
+        <label for="vnWho">誰の声か</label>
+        <select id="vnWho" aria-describedby="vnWhoHelp"></select>
+        <span class="note" id="vnWhoHelp">すでにいる人を選ぶと、その人に録音を 1 本足します。</span>
+      </div>
+      <div class="field" id="vnNewWrap" hidden>
+        <label for="vnName">新しい人の名前</label>
+        <input type="text" id="vnName" placeholder="例: 前田" aria-describedby="vnNameErr vnSimilar">
+        <span class="note warn-text" id="vnSimilar" hidden></span>
+        <span class="err-text" id="vnNameErr" hidden>名前を入れてください。</span>
+      </div>
+      <fieldset class="choices">
+        <legend class="lbl" style="margin-bottom:6px">どの声を使うか</legend>
+        <label class="choice"><input type="radio" name="src" value="transcript" checked><span><b>文字起こしの話者から</b><small>会議の中の、その人の発言を使う</small></span></label>
+        <label class="choice"><input type="radio" name="src" value="file"><span><b>音声ファイルから</b><small>その人だけが 30 秒以上話している録音</small></span></label>
+      </fieldset>
+      <div id="srcTranscript" class="row" style="align-items:flex-end">
+        <div class="field" style="flex:1;min-width:200px"><label for="vnT">文字起こし</label><select id="vnT"></select></div>
+        <div class="field" style="flex:1;min-width:160px"><label for="vnS">話者</label><select id="vnS"></select></div>
+      </div>
+      <div id="srcFile" hidden>
+        <div class="drop" data-drop="voice">
+          <b>音声をここにドロップ</b>
+          <span>本人以外の声が入っていると、照合を間違えやすくなります</span>
+          <div class="row">
+            <label class="btn sec small" for="vnInput">ファイルを選ぶ</label>
+            <input type="file" id="vnInput" class="sr" accept="audio/*,.wav,.WAV,.m4a,.mp3">
+          </div>
+        </div>
+        <ul class="files" id="vnFiles" hidden></ul>
+      </div>
+      <label class="check"><input type="checkbox" id="vnConsent"><span>本人から、声の特徴を保存する同意を得ています<small>自分の声ならチェックしてください。保存するのは音声ではなく、声の特徴を表す数値です</small></span></label>
+      <div class="row"><button class="btn" type="button" id="vnSave" disabled>登録する</button><span class="muted" id="vnHint" role="status"></span></div>
+    </div>
+  </section>
+
+  <!-- 人の詳細 -->
+  <section class="page" data-page="voice" aria-labelledby="pTitle" hidden>
+    <a class="back" href="#/voices">← 人と声</a>
+    <div class="head"><div><h1 id="pTitle"></h1><p class="muted" id="pSub"></p></div><a class="btn sec" id="pAdd" href="#/voices/new">録音を足す</a></div>
+    <div class="card">
+      <h2>名前</h2>
+      <div class="row" style="align-items:flex-end">
+        <div class="field" style="flex:1;min-width:180px"><label for="pName">表示名</label><input type="text" id="pName"></div>
+        <button class="btn sec" type="button" id="pRename">名前を直す</button>
+      </div>
+      <p class="muted" id="pUsed"></p>
+    </div>
+    <div class="card">
+      <h2>登録に使った録音</h2>
+      <ul class="list" id="pRecs" style="border:0"></ul>
+      <p class="muted">マイクや部屋が違う会議から足すほど、照合が安定します。どの録音も同じ重みで平均します。</p>
+    </div>
+    <div class="card">
+      <h2>声の登録を消す</h2>
+      <p class="muted">以後の文字起こしで、この人に自動で結び付かなくなります。これまでの文字起こしの結び付けはそのまま残ります。</p>
+      <div><button class="btn danger" type="button" id="pDel">声の登録を消す</button></div>
+    </div>
+  </section>
+
+  <!-- 雑音を抑える -->
+  <section class="page" data-page="reuse" aria-labelledby="rTitle" hidden>
+    <div><h1 id="rTitle">雑音を抑える</h1><p class="muted">RE-USE で雑音や残響を抑えた WAV を作ります。文字起こしはしません。</p></div>
+    <div class="card" id="rForm">
+      <div class="drop" data-drop="reuse">
+        <b>音声をここにドロップ</b>
+        <span>複数のファイルは名前の順につないで 1 本にします</span>
+        <div class="row">
+          <label class="btn sec small" for="rInput">ファイルを選ぶ</label>
+          <input type="file" id="rInput" class="sr" multiple accept="audio/*,.wav,.WAV,.m4a,.mp3">
+        </div>
+      </div>
+      <p class="notice err" id="rErr" hidden></p>
+      <ul class="files" id="rFiles" hidden></ul>
+      <div class="row"><button class="btn" type="button" id="rRun" disabled>雑音を抑える</button></div>
+    </div>
+    <div class="card" id="rBusy" hidden aria-live="polite"><h2>雑音を抑えています</h2><p class="muted" id="rStep"></p></div>
+    <div class="card" id="rDone" hidden tabindex="-1">
+      <h2>できました</h2>
+      <p><span class="mono" id="rOut"></span><br><span class="muted">16kHz モノラル · 長さは元と同じ（<time id="rLen"></time>）</span></p>
+      <p class="notice warn">小さな声や相づちが消えていることがあります。使う前に聞いて確かめてください。</p>
+      <div class="row">
+        <a class="btn" id="rDl" download>WAV をダウンロード</a>
+        <button class="btn sec" type="button" id="rToAsr">この音声を文字起こしする</button>
+        <button class="btn sec" type="button" id="rAgain">別の音声にする</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="enrollDlg" aria-labelledby="eTitle">
+  <form method="dialog">
+    <h2 id="eTitle">「<span id="eWho"></span>」の声を登録</h2>
+    <p class="muted" id="eDesc"></p>
+    <label class="check"><input type="checkbox" id="eConsent"><span>本人から同意を得ています<small>自分の声ならチェックしてください</small></span></label>
+    <div class="row" style="justify-content:flex-end"><button class="btn sec" value="cancel">やめる</button><button class="btn" value="ok" id="eOk" disabled>登録する</button></div>
+  </form>
+</dialog>
+<dialog id="delDlg" aria-labelledby="delTitle">
+  <form method="dialog">
+    <h2 id="delTitle"></h2>
+    <p class="muted" id="delDesc"></p>
+    <div class="row" style="justify-content:flex-end"><button class="btn sec" value="cancel">やめる</button><button class="btn danger" value="ok">消す</button></div>
+  </form>
+</dialog>
+<dialog id="npDlg" aria-labelledby="npTitle">
+  <form method="dialog">
+    <h2 id="npTitle">新しい人として追加</h2>
+    <div class="field"><label for="npName">名前</label><input type="text" id="npName" placeholder="例: 前田" aria-describedby="npSimilar"></div>
+    <p class="notice warn" id="npSimilar" hidden></p>
+    <div class="row" style="justify-content:flex-end"><button class="btn sec" value="cancel">やめる</button><button class="btn" value="ok" id="npOk" disabled>追加する</button></div>
+  </form>
+</dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmt = t => { t = Math.floor(t || 0); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); };
+const toast = msg => { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 2800); };
+const COLORS = ["var(--s0)", "var(--s1)", "var(--s2)", "var(--s3)"];
+
+/* ---------- API ---------- */
+async function api(path, opt) {
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error || `エラーが起きました（${r.status}）`);
+  return j;
+}
+const send = (method, path, body) => api(path, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message); } };
+let S = { people: [], transcripts: [] };
+const refresh = async () => { S = await api("/api/state"); };
+const pById = id => S.people.find(p => p.id === id);
+// 話者は人の id で結び付く。並びはラベル順、「話者 N」の N はその順番 + 1
+const labels = t => Object.keys(t.speakers).sort();
+const pname = (t, l) => pById(t.speakers[l].person)?.name || `話者 ${labels(t).indexOf(l) + 1}`;
+const color = (t, l) => COLORS[labels(t).indexOf(l) % 4];
+// ponytail: 敬称と空白を除いて部分一致を見るだけ。読み（はやし／ハヤシ）の揺れは拾わない
+const norm = s => s.replace(/\s|様|さん|氏/g, "");
+const similar = name => S.people.filter(p => norm(name) && (norm(p.name).includes(norm(name)) || norm(name).includes(norm(p.name))));
+const similarText = name => {
+  if (S.people.some(p => p.name === name)) return `「${name}」はすでにいます。別の人なら「${name}（会社名）」のように区別してください。`;
+  const sim = similar(name);
+  return sim.length ? `似た名前の人がいます: ${sim.map(p => p.name).join("、")}。同じ人なら、一覧から選んでください。` : "";
+};
+
+/* ---------- ルーティング ---------- */
+const routes = [
+  [/^#\/?$/, "list", renderList],
+  [/^#\/new$/, "new", renderNew],
+  [/^#\/t\/([^/]+)$/, "detail", loadDetail],
+  [/^#\/voices$/, "voices", renderVoices],
+  [/^#\/voices\/new(?:\?(.*))?$/, "voiceNew", renderVoiceNew],
+  [/^#\/voices\/p\/(.+)$/, "voice", renderPerson],
+  [/^#\/reuse$/, "reuse", () => {}],
+];
+const NAV = { list: "list", new: "list", detail: "list", voices: "voices", voiceNew: "voices", voice: "voices", reuse: "reuse" };
+let poll = 0;
+async function route() {
+  const h = location.hash || "#/", n = ++route.n;
+  clearTimeout(poll);
+  try { await refresh(); } catch (e) { toast(e.message); }
+  if (n !== route.n) return;
+  for (const [re, page, fn] of routes) {
+    const m = h.match(re);
+    if (!m) continue;
+    $$("[data-page]").forEach(s => s.hidden = s.dataset.page !== page);
+    if (page !== "detail") audio.pause();
+    $$("[data-nav]").forEach(a => a.dataset.nav === NAV[page] ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
+    fn(...m.slice(1).map(x => x && decodeURIComponent(x)));
+    $(`[data-page="${page}"] h1`)?.setAttribute("tabindex", "-1");
+    if (route.moved) $(`[data-page="${page}"] h1`)?.focus();
+    route.moved = true;
+    scrollTo(0, 0);
+    return;
+  }
+  location.hash = "#/";
+}
+route.n = 0;
+addEventListener("hashchange", route);
+
+/* ---------- ドロップ（共通）。選んだ時点でアップロードして token と長さをもらう ---------- */
+const picked = { new: [], reuse: [], voice: [] };
+const rerender = key => ({ new: renderNewFiles, reuse: renderReuseFiles, voice: renderVoiceFiles })[key]();
+const ready = key => picked[key].length > 0 && picked[key].every(f => f.token);
+function addTo(key, files, single = false) {
+  const items = files.filter(f => single || !picked[key].some(x => x.name === f.name)).map(f => ({ name: f.name, dur: null, token: null }));
+  if (single) picked[key] = items.slice(0, 1);
+  else { picked[key].push(...items); picked[key].sort((a, b) => a.name.localeCompare(b.name)); }
+  items.forEach(it => api("/api/uploads?name=" + encodeURIComponent(it.name), { method: "POST", body: files.find(f => f.name === it.name) })
+    .then(r => Object.assign(it, { token: r.token, dur: r.dur }))
+    .catch(e => { picked[key] = picked[key].filter(x => x !== it); toast(e.message); })
+    .finally(() => rerender(key)));
+  rerender(key);
+}
+$$("[data-drop]").forEach(d => {
+  ["dragenter", "dragover"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove("over"); }));
+  d.addEventListener("drop", e => addTo(d.dataset.drop, [...e.dataTransfer.files], d.dataset.drop === "voice"));
+});
+$("#newInput").onchange = e => { addTo("new", [...e.target.files]); e.target.value = ""; };
+$("#rInput").onchange = e => { addTo("reuse", [...e.target.files]); e.target.value = ""; };
+$("#vnInput").onchange = e => { addTo("voice", [...e.target.files], true); e.target.value = ""; };
+function fileList(el, key, after) {
+  const fs = picked[key], total = fs.reduce((a, f) => a + f.dur, 0);
+  el.hidden = fs.length === 0;
+  el.innerHTML = fs.map((f, i) => `<li><span class="name" title="${esc(f.name)}">${esc(f.name)}</span><time>${f.token ? fmt(f.dur) : "送信中…"}</time><button class="x" type="button" data-i="${i}" aria-label="${esc(f.name)} を外す">×</button></li>`).join("")
+    + (fs.length > 1 && ready(key) ? `<li><span class="muted">つないだ長さ</span><time>${fmt(total)}</time><span></span></li>` : "");
+  $$("[data-i]", el).forEach(b => b.onclick = () => { fs.splice(+b.dataset.i, 1); after(); });
+}
+
+/* ---------- 一覧 ---------- */
+function renderList() {
+  const q = $("#q").value.trim();
+  const names = t => labels(t).map(l => pById(t.speakers[l].person)?.name).filter(Boolean);
+  const list = S.transcripts.filter(t => !q || t.title.includes(q) || names(t).some(n => n.includes(q))).sort((a, b) => (b.created || "").localeCompare(a.created || ""));
+  $("#tEmpty").hidden = list.length > 0; $("#tList").hidden = list.length === 0;
+  $("#tList").innerHTML = list.map(t => {
+    const named = names(t), n = labels(t).length, rest = n - named.length;
+    const sub = t.status === "failed" ? "失敗しました" : t.status !== "done" ? "処理中です" : `${named.map(esc).join("、")}${rest ? `${named.length ? "、" : ""}名前のない人 ${rest} 人` : ""}`;
+    return `<li><a href="#/t/${encodeURIComponent(t.id)}"><span class="t">${esc(t.title)}</span><span class="s">${sub}</span><span class="r"><time>${fmt(t.dur)}</time><br>${t.status === "done" ? n + " 人" : ""}</span></a></li>`;
+  }).join("");
+}
+$("#q").oninput = renderList;
+
+/* ---------- 新しく文字起こし ---------- */
+function renderNew() { $("#newForm").hidden = false; $("#newBusy").hidden = true; renderNewFiles(); }
+function renderNewFiles() {
+  fileList($("#newFiles"), "new", renderNewFiles);
+  const n = picked.new.length;
+  $("#newRun").disabled = !ready("new");
+  $("#newHint").textContent = n === 0 ? "録音を追加してください" : !ready("new") ? "録音を送っています…" : n > 1 ? `${n} 本をつないで文字起こしします` : "";
+  if (n && !$("#newName").value) $("#newName").value = picked.new[0].name.replace(/\.[^.]+$/, "");
+}
+$("#newRun").onclick = guard(async () => {
+  const name = $("#newName"), bad = !name.value.trim();
+  name.setAttribute("aria-invalid", bad); $("#newNameErr").hidden = !bad;
+  if (bad) return name.focus();
+  $("#newForm").hidden = true; $("#newBusy").hidden = false;
+  try {
+    const t = await send("POST", "/api/transcripts", { title: name.value.trim(), uploads: picked.new.map(f => f.token), reuse: $("#optReuse").checked, engine: $("#optWhisper").checked ? "whispermlx" : "haas" });
+    picked.new = []; name.value = "";
+    location.hash = "#/t/" + encodeURIComponent(t.id);
+  } catch (e) { renderNew(); throw e; }
+});
+
+/* ---------- 結果 ---------- */
+let cur = null;
+async function loadDetail(id) {
+  const n = route.n;
+  try {
+    const d = await api(`/api/transcripts/${encodeURIComponent(id)}`);
+    if (n !== route.n) return;
+    cur = d;
+    showDetail();
+    if (d.status === "queued" || d.status === "running") poll = setTimeout(() => loadDetail(id), 2000);
+  } catch (e) { toast(e.message); if (!cur || cur.id !== id) location.hash = "#/"; }
+}
+function showDetail() {
+  const done = cur.status === "done", ls = labels(cur), segs = cur.segments || [];
+  $("#dTitle").textContent = cur.title;
+  $("#dSummary").innerHTML = done ? `<span><b>${fmt(cur.dur)}</b> の録音</span><span><b>${ls.length}</b> 人</span><span><b>${segs.length}</b> 行</span>` : "";
+  $("#dBusy").hidden = done; $("#dBody").hidden = !done;
+  if (!done) {
+    const failed = cur.status === "failed";
+    $("#dBusyT").textContent = failed ? "文字起こしに失敗しました" : "文字起こししています";
+    $("#dStep").textContent = failed ? "" : cur.step || "順番を待っています";
+    $("#dErr").hidden = !failed; $("#dErr").textContent = cur.error || "";
+    $("#dWait").hidden = failed;
+    return;
+  }
+  const totals = Object.fromEntries(ls.map(l => [l, 0]));
+  segs.forEach(s => totals[s.speaker] += s.end - s.start);
+  const used = new Set(ls.map(l => cur.speakers[l].person).filter(Boolean));
+  $("#people").innerHTML = ls.map((l, i) => {
+    const s = cur.speakers[l], p = pById(s.person);
+    const opts = `<option value="">未設定</option>` + S.people.map(x => {
+      const other = used.has(x.id) && x.id !== s.person;
+      return `<option value="${esc(x.id)}" ${x.id === s.person ? "selected" : ""} ${other ? "disabled" : ""}>${esc(x.name)}${other ? "（別の話者）" : ""}</option>`;
+    }).join("") + `<option value="+">新しい人として追加…</option>`;
+    const how = s.how === "voice" ? `<span class="tag ok">声で判定 ${(s.score ?? 0).toFixed(2)}</span><button class="x2" type="button" data-wrong="${l}">違う</button>`
+      : s.how === "hand" ? `<span class="tag n">手で選んだ</span>` : "";
+    const act = !p ? `<span class="note">人を選ぶと声を登録できます</span>`
+      : s.enrolled ? `<span class="note">この録音で登録済み</span>`
+      : `<button class="btn sec small" type="button" data-enroll="${l}">${p.recs.length ? "この録音も足す" : "声を登録"}</button>`;
+    return `<div class="person" style="--c:${COLORS[i % 4]}"><span class="sw" aria-hidden="true"></span>
+      <div class="who"><select data-who="${l}" aria-label="話者 ${i + 1} は誰か">${opts}</select>${how}<span class="note">${fmt(totals[l])} 話した</span></div>${act}</div>`;
+  }).join("");
+  $$("[data-who]").forEach(sel => sel.onchange = () => {
+    const l = sel.dataset.who;
+    if (sel.value !== "+") return link(l, sel.value || null);
+    openNewPerson(guard(async name => {
+      if (!name) { showDetail(); return $(`[data-who="${l}"]`).focus(); }
+      await link(l, (await send("POST", "/api/people", { name })).id);
+    }));
+  });
+  $$("[data-wrong]").forEach(b => b.onclick = async () => {
+    const l = b.dataset.wrong, name = pname(cur, l);
+    if (await link(l, null)) toast(`「${name}」との結び付けを外しました。間違いとして記録し、照合の見直しに使います`);
+  });
+  $$("[data-enroll]").forEach(b => b.onclick = () => openEnroll(b.dataset.enroll, b));
+  $("#lines").innerHTML = segs.map((s, k) => `<li style="--c:${color(cur, s.speaker)}" data-k="${k}"><button class="tbtn" type="button" data-seek="${s.start}" aria-label="${fmt(s.start)} から再生">${fmt(s.start)}</button><span><b>${esc(pname(cur, s.speaker))}</b>${esc(s.text)}</span></li>`).join("");
+  $$("#lines [data-seek]").forEach(b => b.onclick = () => playFrom(+b.dataset.seek));
+  $$("#dl a").forEach(a => a.href = `/api/transcripts/${encodeURIComponent(cur.id)}/download/${a.dataset.fmt}`);
+  renderRibbon();
+  const src = `/api/transcripts/${encodeURIComponent(cur.id)}/audio`;
+  if (audio.dataset.src !== src) { audio.dataset.src = src; audio.src = src; playerError(false); lastK = -1; }
+  tick();
+}
+
+/* ---------- 話者リボンと再生 ---------- */
+const audio = $("#audio");
+function renderRibbon() {
+  const D = cur.dur || 1;
+  $("#ribbon").innerHTML = labels(cur).map((l, i) => `<div class="lane" style="--c:${COLORS[i % 4]}"><span class="who"><i></i><span title="${esc(pname(cur, l))}">${esc(pname(cur, l))}</span></span><div class="track" data-track role="group" aria-label="${esc(pname(cur, l))} の発言">${
+    cur.segments.map(s => s.speaker === l ? `<button type="button" tabindex="-1" style="left:${s.start / D * 100}%;width:${(s.end - s.start) / D * 100}%" data-seek="${s.start}" aria-label="${fmt(s.start)} から ${Math.round(s.end - s.start)} 秒"></button>` : "").join("")
+  }</div></div>`).join("");
+  $("#axis").innerHTML = [0, .25, .5, .75, 1].map(x => `<span>${fmt(x * D)}</span>`).join("");
+  $$("#ribbon [data-seek]").forEach(b => b.onclick = e => { e.stopPropagation(); playFrom(+b.dataset.seek); });
+  $$("#ribbon [data-track]").forEach(tr => tr.onclick = e => { const r = tr.getBoundingClientRect(); playFrom((e.clientX - r.left) / r.width * D); });
+}
+function playerError(on) {
+  ["#playBtn", "#back5", "#fwd5"].forEach(s => $(s).disabled = on);
+  if (on) $("#nowSpk").textContent = "録音を開けません";
+}
+audio.addEventListener("error", () => playerError(true));
+function playFrom(t) {
+  if ($("#playBtn").disabled) return toast("録音を開けないため再生できません");
+  audio.currentTime = Math.max(0, t); audio.play();
+}
+$("#playBtn").onclick = () => audio.paused ? audio.play() : audio.pause();
+$("#back5").onclick = () => audio.currentTime = Math.max(0, audio.currentTime - 5);
+$("#fwd5").onclick = () => audio.currentTime += 5;
+["play", "pause"].forEach(ev => audio.addEventListener(ev, () => { $("#playBtn").textContent = audio.paused ? "▶" : "❚❚"; $("#playBtn").setAttribute("aria-label", audio.paused ? "再生" : "一時停止"); }));
+let lastK = -1;
+function tick() {
+  if (!cur?.segments) return;
+  const t = audio.currentTime || 0, segs = cur.segments;
+  $("#clock").textContent = `${fmt(t)} / ${fmt(cur.dur)}`;
+  $("#playhead").style.left = `${Math.min(t / (cur.dur || 1), 1) * 100}%`;
+  const seg = segs.find(s => s.start <= t && t < s.end);
+  if (!$("#playBtn").disabled) $("#nowSpk").innerHTML = seg ? `<b style="--c:${color(cur, seg.speaker)}">${esc(pname(cur, seg.speaker))}</b> が話しています` : "";
+  let k = -1;
+  segs.forEach((s, i) => { if (s.start <= t) k = i; });
+  if (k === segs.length - 1 && k >= 0 && t > segs[k].end) k = -1;
+  if (k !== lastK) {
+    $$("#lines li.playing").forEach(li => li.classList.remove("playing"));
+    const li = $(`#lines li[data-k="${k}"]`);
+    if (li) { li.classList.add("playing"); if (!audio.paused) { const box = $("#lines"); box.scrollTop = li.offsetTop - box.offsetTop - 40; } }
+    lastK = k;
+  }
+}
+audio.addEventListener("timeupdate", tick);
+audio.addEventListener("seeked", tick);
+async function link(l, id) {
+  try {
+    Object.assign(cur, await send("PUT", `/api/transcripts/${encodeURIComponent(cur.id)}/speakers/${l}`, { person: id }));
+    await refresh();
+    return true;
+  } catch (e) { toast(e.message); return false; }
+  finally { showDetail(); $(`[data-who="${l}"]`)?.focus(); }
+}
+const npDlg = $("#npDlg"); let npDone = null;
+function openNewPerson(done) {
+  npDone = done; $("#npName").value = ""; $("#npOk").disabled = true; $("#npSimilar").hidden = true;
+  npDlg.showModal(); $("#npName").focus();
+}
+$("#npName").oninput = () => {
+  const v = $("#npName").value.trim(), msg = v ? similarText(v) : "";
+  $("#npOk").disabled = !v || S.people.some(p => p.name === v);
+  $("#npSimilar").hidden = !msg; $("#npSimilar").textContent = msg;
+};
+// Enter で先頭の「やめる」が押されないようにする
+$("#npName").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); if (!$("#npOk").disabled) npDlg.close("ok"); } };
+npDlg.addEventListener("close", () => { const done = npDone; npDone = null; done?.(npDlg.returnValue === "ok" ? $("#npName").value.trim() : null); });
+const eDlg = $("#enrollDlg"); let eLabel = "", eTrig = null;
+function openEnroll(l, btn) {
+  eLabel = l; eTrig = btn; const p = pById(cur.speakers[l].person);
+  $("#eWho").textContent = p.name;
+  $("#eDesc").textContent = p.recs.length ? `すでに録音 ${p.recs.length} 本で登録しています。この会議での発言を 1 本ぶん足します。` : "この会議での発言から声の特徴を作ります。次からの文字起こしで、自動でこの人に結び付きます。";
+  $("#eConsent").checked = false; $("#eOk").disabled = true; eDlg.showModal(); $("#eConsent").focus();
+}
+$("#eConsent").onchange = e => $("#eOk").disabled = !e.target.checked;
+eDlg.addEventListener("close", guard(async () => {
+  if (eDlg.returnValue !== "ok") return eTrig?.focus();
+  const r = await send("POST", `/api/transcripts/${encodeURIComponent(cur.id)}/speakers/${eLabel}/enroll`);
+  Object.assign(cur, r.meta); await refresh(); showDetail(); $(`[data-who="${eLabel}"]`)?.focus();
+  toast(`「${r.person.name}」の声を登録しました（録音 ${r.person.recs.length} 本）`);
+}));
+
+/* ---------- 人と声 ---------- */
+const linkedIn = id => S.transcripts.filter(t => Object.values(t.speakers).some(s => s.person === id));
+function renderVoices() {
+  $("#vEmpty").hidden = S.people.length > 0; $("#vList").hidden = S.people.length === 0;
+  $("#vList").innerHTML = S.people.map(p => {
+    const n = p.recs.length;
+    const voice = n ? `声は録音 ${n} 本で登録${n === 1 ? " · 録音を足すと照合が安定します" : ""}` : "声は未登録 · 手で選んだときだけ結び付きます";
+    return `<li><a href="#/voices/p/${encodeURIComponent(p.id)}"><span class="t">${esc(p.name)}</span><span class="s">${voice}</span><span class="r">${linkedIn(p.id).length} 件の<br>文字起こし</span></a></li>`;
+  }).join("");
+}
+function renderVoiceNew(query = "") {
+  const pre = new URLSearchParams(query).get("p");
+  $("#vnWho").innerHTML = S.people.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.recs.length ? `（録音 ${p.recs.length} 本）` : "（声は未登録）"}</option>`).join("") + `<option value="+">新しい人</option>`;
+  $("#vnWho").value = pById(pre) ? pre : "+";
+  $("#vnName").value = ""; $("#vnSimilar").hidden = true; $("#vnNameErr").hidden = true; $("#vnName").removeAttribute("aria-invalid");
+  $("#vnConsent").checked = false; $("#vnHint").textContent = "";
+  $("#vnT").innerHTML = S.transcripts.filter(t => t.status === "done").map(t => `<option value="${esc(t.id)}">${esc(t.title)}</option>`).join("");
+  picked.voice = []; renderVoiceFiles(); syncWho(); syncSrc();
+}
+const syncWho = () => { $("#vnNewWrap").hidden = $("#vnWho").value !== "+"; renderSpeakerSelect(); };
+$("#vnWho").onchange = syncWho;
+function renderSpeakerSelect() {
+  const t = S.transcripts.find(x => x.id === $("#vnT").value), who = $("#vnWho").value;
+  // 別の人に結び付いた話者は選べない。新しい人なら未設定の話者だけ
+  const ls = t ? labels(t) : [], taken = l => t.speakers[l].person && t.speakers[l].person !== who;
+  $("#vnS").innerHTML = ls.map(l => `<option value="${l}" ${taken(l) ? "disabled" : ""}>${esc(pname(t, l))}${taken(l) ? "（別の人）" : t.speakers[l].enrolled ? "（この録音で登録済み）" : ""}</option>`).join("");
+  $("#vnS").value = ls.find(l => t.speakers[l].person === who) ?? ls.find(l => !taken(l)) ?? "";
+  validateVoice();
+}
+const syncSrc = () => { const file = $("input[name=src]:checked").value === "file"; $("#srcFile").hidden = !file; $("#srcTranscript").hidden = file; validateVoice(); };
+$$("input[name=src]").forEach(r => r.onchange = syncSrc);
+$("#vnT").onchange = renderSpeakerSelect;
+$("#vnName").oninput = () => { const msg = similarText($("#vnName").value.trim()); $("#vnSimilar").hidden = !msg; $("#vnSimilar").textContent = msg; $("#vnNameErr").hidden = true; };
+$("#vnConsent").onchange = validateVoice;
+function renderVoiceFiles() { fileList($("#vnFiles"), "voice", renderVoiceFiles); validateVoice(); }
+function validateVoice() {
+  const file = $("input[name=src]:checked")?.value === "file", opt = $("#vnS").selectedOptions[0];
+  const hint = file ? (picked.voice.length ? (ready("voice") ? "" : "録音を送っています…") : "音声ファイルを追加してください")
+    : !opt || opt.disabled ? "この文字起こしには選べる話者がいません" : "";
+  $("#vnSave").disabled = !!hint || !$("#vnConsent").checked;
+  $("#vnHint").textContent = hint || (!$("#vnConsent").checked ? "同意を確認してください" : "");
+}
+$("#vnSave").onclick = async () => {
+  let who = $("#vnWho").value;
+  const name = $("#vnName").value.trim(), file = $("input[name=src]:checked").value === "file";
+  if (who === "+") {
+    const dup = S.people.some(p => p.name === name);
+    if (!name || dup) {
+      $("#vnNameErr").textContent = dup ? `「${name}」はすでにいます。同じ人なら上の一覧から選んでください。` : "名前を入れてください。";
+      $("#vnNameErr").hidden = false; $("#vnName").setAttribute("aria-invalid", "true"); return $("#vnName").focus();
+    }
+  }
+  if (file && picked.voice[0].dur < 30) { $("#vnHint").textContent = "30 秒以上の音声を選んでください（短いと声の特徴が安定しません）"; return; }
+  $("#vnSave").disabled = true;
+  try {
+    if (who === "+") who = (await send("POST", "/api/people", { name })).id;
+    let p;
+    if (file) p = await send("POST", `/api/people/${encodeURIComponent(who)}/enroll`, { upload: picked.voice[0].token });
+    else {
+      const t = S.transcripts.find(x => x.id === $("#vnT").value), l = $("#vnS").value, base = `/api/transcripts/${encodeURIComponent(t.id)}/speakers/${l}`;
+      if (t.speakers[l].person !== who) await send("PUT", base, { person: who });
+      p = (await send("POST", base + "/enroll")).person;
+    }
+    await refresh();
+    toast(`「${p.name}」の声を登録しました（録音 ${p.recs.length} 本）`);
+    location.hash = "#/voices/p/" + encodeURIComponent(who);
+  } catch (e) { $("#vnHint").textContent = e.message; toast(e.message); $("#vnSave").disabled = false; }
+};
+let person = null;
+function renderPerson(id) {
+  person = pById(id); if (!person) return (location.hash = "#/voices");
+  const n = person.recs.length, ts_ = linkedIn(person.id);
+  $("#pTitle").textContent = person.name; $("#pSub").textContent = n ? `声は録音 ${n} 本で登録` : "声は未登録";
+  $("#pName").value = person.name;
+  $("#pUsed").textContent = ts_.length ? `${ts_.length} 件の文字起こしで結び付いています。名前を直すと、それらの本文とダウンロードにも反映されます。` : "まだどの文字起こしとも結び付いていません。";
+  $("#pAdd").href = "#/voices/new?p=" + encodeURIComponent(person.id); $("#pAdd").textContent = n ? "録音を足す" : "声を登録する";
+  $("#pRecs").innerHTML = n ? person.recs.map((r, i) => `<li><div class="item"><span class="t">${esc(r.from)}</span><span class="s">${esc(r.detail)}</span><span class="r">${n > 1 ? `<button class="btn sec small" type="button" data-rec="${i}">外す</button>` : ""}</span></div></li>`).join("")
+    : `<li><div class="item"><span class="s">まだありません。文字起こしの話者から登録できます</span></div></li>`;
+  $$("[data-rec]").forEach(b => b.onclick = guard(async () => {
+    const r = person.recs[+b.dataset.rec];
+    await send("DELETE", `/api/people/${encodeURIComponent(person.id)}/recs/${b.dataset.rec}`);
+    await refresh(); renderPerson(person.id); toast(`「${r.from}」を登録から外しました`);
+  }));
+  $("#pDel").closest(".card").hidden = n === 0;
+}
+$("#pRename").onclick = guard(async () => {
+  const v = $("#pName").value.trim(), old = person.name;
+  if (!v || v === old) return;
+  await send("PATCH", `/api/people/${encodeURIComponent(person.id)}`, { name: v });
+  await refresh(); renderPerson(person.id);
+  toast(`「${old}」を「${v}」に直しました。結び付いた文字起こしにも反映されます`);
+});
+const dDlg = $("#delDlg");
+$("#pDel").onclick = () => { $("#delTitle").textContent = `「${person.name}」の声の登録を消しますか？`; $("#delDesc").textContent = `録音 ${person.recs.length} 本ぶんの声の特徴を消します。人と、これまでの文字起こしの結び付けは残ります。`; dDlg.showModal(); };
+dDlg.addEventListener("close", guard(async () => {
+  if (dDlg.returnValue !== "ok") return $("#pDel").focus();
+  await send("DELETE", `/api/people/${encodeURIComponent(person.id)}/voice`);
+  await refresh(); toast(`「${person.name}」の声の登録を消しました`); renderPerson(person.id);
+}));
+
+/* ---------- 雑音を抑える ---------- */
+let rRes = null;
+function renderReuseFiles() { fileList($("#rFiles"), "reuse", renderReuseFiles); $("#rRun").disabled = !ready("reuse"); }
+$("#rRun").onclick = guard(async () => {
+  $("#rForm").hidden = true; $("#rBusy").hidden = false; $("#rErr").hidden = true; $("#rStep").textContent = "";
+  try { reusePoll((await send("POST", "/api/reuse", { uploads: picked.reuse.map(f => f.token) })).id); }
+  catch (e) { $("#rForm").hidden = false; $("#rBusy").hidden = true; throw e; }
+});
+async function reusePoll(id) {
+  try {
+    const r = await api(`/api/reuse/${encodeURIComponent(id)}`);
+    if (r.status === "failed") { $("#rForm").hidden = false; $("#rBusy").hidden = true; $("#rErr").textContent = r.error || "失敗しました"; $("#rErr").hidden = false; return; }
+    if (r.status !== "done") { $("#rStep").textContent = r.step || ""; return setTimeout(() => reusePoll(id), 2000); }
+    rRes = r;
+    $("#rOut").textContent = r.name; $("#rLen").textContent = fmt(r.dur); $("#rDl").href = `/api/reuse/${encodeURIComponent(id)}/audio`;
+    $("#rBusy").hidden = true; $("#rDone").hidden = false; $("#rDone").focus();
+  } catch (e) { toast(e.message); resetReuse(); }
+}
+$("#rToAsr").onclick = () => { picked.new = [{ name: rRes.name, dur: rRes.dur, token: rRes.upload }]; $("#optReuse").checked = false; $("#newName").value = ""; resetReuse(); location.hash = "#/new"; toast("雑音を抑えた音声を入れました（雑音を抑える設定は外しています）"); };
+const resetReuse = () => { picked.reuse = []; renderReuseFiles(); $("#rForm").hidden = false; $("#rBusy").hidden = true; $("#rErr").hidden = true; $("#rDone").hidden = true; };
+$("#rAgain").onclick = resetReuse;
+
+route();
+</script>
+</body>
+</html>

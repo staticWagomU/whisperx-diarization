@@ -1,12 +1,21 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from assign_nemotron import main, split_by_speaker
+from assign_nemotron import main, main_speech, split_by_speaker
 
 
 class AssignNemotronTest(unittest.TestCase):
+    def setUp(self):
+        # 実際に登録した声を読まない
+        self.voices = tempfile.TemporaryDirectory()
+        os.environ["WHISPERX_VOICES"] = self.voices.name
+
+    def tearDown(self):
+        self.voices.cleanup()
+
     def test_writes_speaker_labels_to_all_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -35,6 +44,26 @@ class AssignNemotronTest(unittest.TestCase):
                 (root / "audio.txt").read_text().splitlines(),
                 ["[SPEAKER_00]: こんにちはこんにちは", "[SPEAKER_01]: 良い天気ですね快晴だ"],
             )
+
+    def test_writes_all_outputs_from_speech_cpp_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first, second = "こんにちはこんにちは", "良い天気ですね快晴だ"
+            tokens = [{"start": i * 0.1, "end": i * 0.1 + 0.1, "text": c} for i, c in enumerate(first + second)]
+            (root / "speech.json").write_text(json.dumps({
+                "text": first + second,
+                "tokens": tokens,
+                "regions": [{"start": 0.0, "end": 2.0, "text": first + second, "speakers": [
+                    {"speaker": 0, "start": 0.0, "end": 1.0},
+                    {"speaker": 1, "start": 1.0, "end": 2.0},
+                ]}],
+            }))
+            main_speech(str(root / "speech.json"), "audio.wav", tmp)
+            self.assertEqual(
+                (root / "audio.txt").read_text().splitlines(),
+                [f"[SPEAKER_00]: {first}", f"[SPEAKER_01]: {second}"],
+            )
+            self.assertTrue(all((root / f"audio.{ext}").exists() for ext in ("json", "srt", "vtt", "tsv")))
 
     def test_split_keeps_untimed_words_with_current_speaker(self):
         segments = split_by_speaker({"language": "en", "segments": [{"words": [
